@@ -1,5 +1,5 @@
 # <php version> <official tag suffix>
-# Base image is php:<version>-<suffix>; published as ghcr.io/a-nych/php-eol-backports:<version>-<suffix>.
+# Base image is php:<version>-<suffix>; published as ghcr.io/a-nych/php-eol-docker-backports:<version>-<suffix>.
 # Each entry is the newest Debian/Alpine release the official image was built on.
 7.0 fpm-alpine3.7
 7.0 cli-alpine3.7

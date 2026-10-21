@@ -1,11 +1,11 @@
-# php-eol-backports
+# php-eol-docker-backports
 
 Official `php` Docker images for EOL PHP versions (7.0–8.1), rebuilt with the fix for CVE-2026-109618 and CVE-2026-109619 ("Avoid state corruption via bailout"), which no official image ships.
 
 Drop-in `FROM` replacement, same tag names as the official image:
 
 ```dockerfile
-FROM ghcr.io/a-nych/php-eol-backports:7.4-fpm-bullseye
+FROM ghcr.io/a-nych/php-eol-docker-backports:7.4-fpm-bullseye
 ```
 
 Every image is multi-arch (`linux/amd64`, `linux/arm64`). Tags: `<version>-<variant>` (moving) and `<version>-<variant>-<sha>` (pinned). See [`images.txt`](images.txt) for the full list: Debian `fpm` and `apache`, Alpine `fpm` and `cli`, on the newest distro release each version was built for.
@@ -36,7 +36,7 @@ Debian buster and bullseye images point apt at `archive.debian.org`, since Debia
 Images are built by the public workflow in this repo, which attaches a signed build provenance attestation to each tag. To check that an image came from this repo's workflow, and which commit it was built from:
 
 ```sh
-gh attestation verify oci://ghcr.io/a-nych/php-eol-backports:7.4-fpm-bullseye --owner a-nych
+gh attestation verify oci://ghcr.io/a-nych/php-eol-docker-backports:7.4-fpm-bullseye --owner a-nych
 ```
 
 The builds are not bit-for-bit reproducible. If you'd rather not trust the CI at all, build it yourself:
