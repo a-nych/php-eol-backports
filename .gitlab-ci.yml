@@ -1,0 +1,27 @@
+build:
+  image: docker:29.9.1
+  services:
+    - docker:29.9.1-dind
+  tags:
+    - unitymsp-large
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    PLATFORMS: linux/amd64,linux/arm64
+  parallel:
+    matrix:
+      - PHP_VERSION: "8.1"
+        VARIANT: fpm-bookworm
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+  script:
+    - docker run --privileged --rm tonistiigi/binfmt:qemu-v10.2.3 --install all
+    - docker buildx create --use
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - >
+      docker buildx build
+      --platform "$PLATFORMS"
+      --tag "$CI_REGISTRY_IMAGE:$PHP_VERSION-$VARIANT"
+      --tag "$CI_REGISTRY_IMAGE:$PHP_VERSION-$VARIANT-$CI_COMMIT_SHORT_SHA"
+      --push
+      "$PHP_VERSION"
