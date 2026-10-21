@@ -1,4 +1,4 @@
-# php-eol-backports
+# php-eol-docker-backports
 
 Official `php` Docker images for EOL PHP versions, rebuilt with upstream security fixes that no release ships.
 
