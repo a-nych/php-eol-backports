@@ -19,9 +19,9 @@ Every image is multi-arch (`linux/amd64`, `linux/arm64`). Tags: `<version>-<vari
 | 8.1 | php/php-src@1d7dec1 |
 | 8.0 | php/php-src@82f8f31 |
 | 7.4 | php/php-src@712e60f |
-| 7.0–7.3 | php-src has no fix for these; [Sury's](https://deb.sury.org/) backport of the 7.4 fix, plus his `backport-ZSTR_MAX_LEN` which it needs to compile |
+| 7.0–7.3 | php-src has no fix for these; [Sury's](https://deb.sury.org/) backport of the 7.4 fix, plus his `backport-ZSTR_MAX_LEN` which it needs to compile, plus the `max_multipart_body_parts` hunks of php/php-src@712e60f |
 
-The 7.4 upstream fix also adds the `max_multipart_body_parts` INI limit (CVE-2023-0662) where it was missing. The 7.0–7.3 backport leaves that out, as Sury's 7.0 and 7.1 packages do.
+The upstream 7.4 fix bundles the `max_multipart_body_parts` INI limit (CVE-2023-0662), because 7.4.33 lacks it; the advisory lists multipart parsing as one way to exhaust memory. Sury's 7.x backport leaves that part out, since his own 7.2+ packages already carry the limit ([deb.sury.org#146](https://codeberg.org/oerdnj/deb.sury.org/issues/146)). The official 7.0–7.3 sources don't, so `max_multipart_body_parts.patch` adds those hunks before the fix.
 
 `patches/<version>/series.alpine`, where present, holds patches the official Alpine build applied at build time but which aren't in the image's source tarball (8.1: php/php-src@577b8ae, @a5df266 reverted, @67259e4 without its NEWS hunk, as in the official 8.1.34 Dockerfile). Rebuilding without them would silently drop them. A series line may carry `patch` flags after the file name, e.g. `-R`.
 
