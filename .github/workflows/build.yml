@@ -3,42 +3,95 @@ name: build
 on:
   push:
     branches: [main]
+    paths:
+      - .github/workflows/build.yml
+      - docker/**
+      - patches/**
+      - images.txt
+  pull_request:
+    paths:
+      - .github/workflows/build.yml
+      - docker/**
+      - patches/**
+      - images.txt
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  build:
+  images:
     runs-on: ubuntu-24.04
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - id: list
+        run: |
+          echo "list=$(grep -vE '^\s*(#|$)' images.txt | jq -Rnc '[inputs | split(" ") | {php: .[0], variant: .[1]}]')" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: images
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - php: "8.1"
-            variant: fpm-bookworm
-          - php: "8.0"
-            variant: fpm-bullseye
-          - php: "7.4"
-            variant: fpm-bullseye
+        image: ${{ fromJSON(needs.images.outputs.list) }}
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: docker/setup-qemu-action@v4.4.0
+      - uses: docker/setup-buildx-action@v4.4.1
+      - if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          file: docker/${{ contains(matrix.image.variant, 'alpine') && 'alpine' || 'debian' }}.Dockerfile
+          build-args: |
+            BASE=php:${{ matrix.image.php }}-${{ matrix.image.variant }}
+            PHP_VERSION=${{ matrix.image.php }}
+          platforms: linux/${{ matrix.arch }}
+          provenance: false
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ghcr.io/${{ github.repository }}:${{ matrix.image.php }}-${{ matrix.image.variant }}-${{ matrix.arch }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+  merge:
+    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+    needs: [images, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.images.outputs.list) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
       - uses: docker/setup-buildx-action@v4.4.1
       - uses: docker/login-action@v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: sha
-        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v7.4.0
+      - id: manifest
+        run: |
+          img="ghcr.io/${{ github.repository }}:${{ matrix.image.php }}-${{ matrix.image.variant }}"
+          docker buildx imagetools create -t "$img" -t "$img-${GITHUB_SHA::7}" "$img-amd64" "$img-arm64"
+          echo "digest=$(docker buildx imagetools inspect "$img" --format '{{json .Manifest}}' | jq -r .digest)" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-build-provenance@v4.2.2
         with:
-          context: ${{ matrix.php }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ matrix.php }}-${{ matrix.variant }}
-            ghcr.io/${{ github.repository }}:${{ matrix.php }}-${{ matrix.variant }}-${{ steps.sha.outputs.short }}
-          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true

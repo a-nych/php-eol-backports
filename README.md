@@ -1,21 +1,49 @@
 # php-eol-docker-backports
 
-Official `php` Docker images for EOL PHP versions, rebuilt with upstream security fixes that no release ships.
+Official `php` Docker images for EOL PHP versions (7.0–8.1), rebuilt with the fix for CVE-2026-109618 and CVE-2026-109619 ("Avoid state corruption via bailout"), which no official image ships.
 
-Each `<version>/` holds a Dockerfile and `php-cve.patch`. The patched source is also repacked into `/usr/src/php.tar.xz`, so `docker-php-ext-install` in child images builds from patched code.
-
-Use it as a drop-in `FROM` replacement:
+Drop-in `FROM` replacement, same tag names as the official image:
 
 ```dockerfile
-FROM ghcr.io/a-nych/php-eol-backports:8.1-fpm-bookworm
+FROM ghcr.io/a-nych/php-eol-docker-backports:7.4-fpm-bullseye
 ```
 
-Images are multi-arch (`linux/amd64`, `linux/arm64`). Tags: `<version>-<variant>` (moving) and `<version>-<variant>-<sha>` (pinned).
+Every image is multi-arch (`linux/amd64`, `linux/arm64`). Tags: `<version>-<variant>` (moving) and `<version>-<variant>-<sha>` (pinned). See [`images.txt`](images.txt) for the full list: Debian `fpm` and `apache`, Alpine `fpm` and `cli`, on the newest distro release each version was built for.
 
-| Version | Base | Patch |
-|---|---|---|
-| 8.1 | `php:8.1-fpm-bookworm` (8.1.34) | php/php-src@1d7dec1: CVE-2026-109618, CVE-2026-109619 |
-| 8.0 | `php:8.0-fpm-bullseye` (8.0.30) | php/php-src@82f8f31: CVE-2026-109618, CVE-2026-109619 |
-| 7.4 | `php:7.4-fpm-bullseye` (7.4.33) | php/php-src@712e60f: CVE-2026-109618, CVE-2026-109619 |
+## Patches
 
-The bullseye images point apt at `archive.debian.org`, since Debian no longer serves bullseye from `deb.debian.org`.
+`patches/<version>/series` is applied in order to the official image's PHP source.
+
+| Version | Source |
+|---|---|
+| 8.1 | php/php-src@1d7dec1 |
+| 8.0 | php/php-src@82f8f31 |
+| 7.4 | php/php-src@712e60f |
+| 7.0–7.3 | php-src has no fix for these; [Sury's](https://deb.sury.org/) backport of the 7.4 fix, plus his `backport-ZSTR_MAX_LEN` which it needs to compile, plus the `max_multipart_body_parts` hunks of php/php-src@712e60f |
+
+The upstream 7.4 fix bundles the `max_multipart_body_parts` INI limit (CVE-2023-0662), because 7.4.33 lacks it; the advisory lists multipart parsing as one way to exhaust memory. Sury's 7.x backport leaves that part out, since his own 7.2+ packages already carry the limit ([deb.sury.org#146](https://codeberg.org/oerdnj/deb.sury.org/issues/146)). The official 7.0–7.3 sources don't, so `max_multipart_body_parts.patch` adds those hunks before the fix.
+
+`patches/<version>/series.alpine`, where present, holds patches the official Alpine build applied at build time but which aren't in the image's source tarball (8.1: php/php-src@577b8ae, @a5df266 reverted, @67259e4 without its NEWS hunk, as in the official 8.1.34 Dockerfile). Rebuilding without them would silently drop them. A series line may carry `patch` flags after the file name, e.g. `-R`.
+
+The patched source is also repacked into `/usr/src/php.tar.xz`, so `docker-php-ext-install` in child images builds from patched code. Each build fails unless running out of memory exits with 1 (fixed) rather than 255 (unfixed).
+
+Debian buster and bullseye images point apt at `archive.debian.org`, since Debian no longer serves them from `deb.debian.org`.
+
+7.0 is Alpine-only: its official Debian images are stretch-based, and the stretch archive's signing keys have expired, so its build dependencies can't be installed with signature verification.
+
+## Verify
+
+Images are built by the public workflow in this repo, which attaches a signed build provenance attestation to each tag. To check that an image came from this repo's workflow, and which commit it was built from:
+
+```sh
+gh attestation verify oci://ghcr.io/a-nych/php-eol-docker-backports:7.4-fpm-bullseye --owner a-nych
+```
+
+The builds are not bit-for-bit reproducible. If you'd rather not trust the CI at all, build it yourself:
+
+## Local build
+
+```sh
+docker buildx build -f docker/debian.Dockerfile \
+  --build-arg BASE=php:7.4-fpm-bullseye --build-arg PHP_VERSION=7.4 .
+```
